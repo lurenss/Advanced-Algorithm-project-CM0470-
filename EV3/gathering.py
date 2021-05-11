@@ -10,9 +10,10 @@ import ev3dev.ev3 as ev3
 import os
 os.system('setfont Lat15-TerminusBold14')
 
-
+#Service variables
 speed = 110
 tdist = 90
+
 #Sensors
 sensor_ultrasonic = ev3.UltrasonicSensor()
 sensor_touch = ev3.TouchSensor()
@@ -24,8 +25,6 @@ motor_right = ev3.LargeMotor('outA')
 
 devices = [sensor_ultrasonic, sensor_touch, motor_left, motor_right]
 
-
-lcd = ev3.Screen()
 
 #setting ultrasonic sensor in cm
 sensor_ultrasonic.mode='US-DIST-CM'
@@ -40,12 +39,6 @@ def start_motors(speed):
     motor_left.run_forever(speed_sp=speed)
 
 
- #ef rotate(angle, speed):
-    motor_left.run_to_rel_pos(position_sp=angle*3, speed_sp=speed)
-    motor_right.run_to_rel_pos(position_sp=-angle*3, speed_sp=speed)
-
-
-
 def rotate(speed):
     motor_right.run_forever(speed_sp=speed)
     motor_left.run_forever(speed_sp=-speed)
@@ -54,6 +47,8 @@ def rotate(speed):
 def scanning(speed,tdist):
     dist = []
     dist_supp = sensor_ultrasonic.value()/10 # convert mm to cm  
+    output = []
+
     while(dist_supp > tdist):        
         rotate(speed)
         dist_supp = sensor_ultrasonic.value()/10
@@ -80,22 +75,33 @@ def scanning(speed,tdist):
     stop_motors()
     print("Dist is " + str(dist_supp) + " cm", file=sys.stderr)
     dist.append(dist_supp)
-    angle_between =  360-(elapsed_time * (360.0/7.25)) 
+
+    op_angle = elapsed_time * (360.0/7.25)
+    angle_between =  360-op_angle
     print("The angle is  " + str(angle_between) + " grade", file=sys.stderr)
 
 
     #evalueting opposite side
-    op_side = math.sqrt(math.pow(dist[0],2) + math.pow(dist[1],2) - 2*dist[1]*dist[0]* math.cos(math.radians(angle_between))) 
+    op_side = math.sqrt(math.pow(dist[0],2) + math.pow(dist[1],2) - 2*dist[1]*dist[0]* math.cos(math.radians(angle_between)))
+    dist.append(op_side) 
 
-    if((dist[0] + dist[1]) >  (dist[0] + op_side) and (dist[0] + dist[1]) >  (dist[1] + op_side)):
+    if((dist[0] + dist[1]) >  (dist[0] + dist[2]) and (dist[0] + dist[1]) >  (dist[1] +dist[2])):     #dist[2] is op_side
         ev3.Sound.speak("EV3 is the leader ciao!").wait()
+        output.append(True)
         
 
     else:
          ev3.Sound.speak("Ev3 is not the leader!").wait()
+         output.append(False)
     
     rotate(speed)
     sleep(2)
+
+    output.append(op_angle)
+    output.append(angle_between)
+    output.append(op_side)
+    output.append(dist)
+    return output # leader, op_angle, angle_between,op_side ,vector_distances
     
 
 
@@ -172,11 +178,25 @@ def degree_360():
     return output
 
 
+def move_leader(dist):
+    a_sq = math.pow(dist[0],2)
+    b_sq = math.pow(dist[2],2)
+    c_sq = math.pow(dist[1],2)
+
+    #this is when the robot has in front another robot with "small" distance 
+    k = (a_sq+b_sq-c_sq)/(2 * dist[2])
+    h = math.sqrt(a_sq - math.pow(k, 2))
+    cosine = (a_sq + math.pow(h, 2) - k)/ (2 * dist[0] * h) 
+    angle = math.radians(math.acos(cosine))
+
+
+    #TO DO proportion for movement size
+    
 
 
 def main():
     # check that all devices are connected
-    #assert all(d.connected for d in devices) is True
+    assert all(d.connected for d in devices) is True
     
     #starting messages
     print("All devices connected")
@@ -186,7 +206,9 @@ def main():
     print('Ready to run', file=sys.stderr)
 
     #output = degree_360()
-    scanning(speed,tdist)
+    output=scanning(speed,tdist)
+    #if(output[0] == True):    this robot is the leder
+
 
 '''
     motor_right.run_forever(speed_sp=speed)
