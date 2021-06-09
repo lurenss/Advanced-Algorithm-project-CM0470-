@@ -1,29 +1,17 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SoftwareSerial.h>
-//#include <MeUltrasonicSensor.h>
 #include <MeAuriga.h>
 #include <unistd.h>
 #include <math.h>
 #include <time.h>
 
-
-//  int time_360 = 4800; time settings on campus
 #define SPEED 35
-//#define SPEED 150
-#define ROTATION_90 8.11
-//#define ROTATION_45 4.055
-//#define ROTATION_45 10
-#define ROTATION_45 8
-//#define ROTATION_45 30.00
-#define ROTATION_180 16.22
-#define ROTATION_360 32.44
-#define unit_degree 1
 #define ADJUST_ANGLE 30
 #define ADJUST_LENGTH 30
-//#define equi_edge 50
 
 bool run_loop = true;
+int DELAY = 5000;
 int time_360 = 5700;
 float time1M = 7500;
 MeGyro gyro (0,0x69);
@@ -63,7 +51,6 @@ void forward(int speed) {
 }
 
 void backward(int speed) {
-  //Serial.print("back");
   MotorR.setMotorPwm(speed);
   MotorL.setMotorPwm(-speed);
 }
@@ -84,13 +71,13 @@ void stop() {
   MotorL.setMotorPwm(0);
 }
 
-
-  
-
-
-
 int scan(int distance, float *dist, float *out_angle)
 {
+  /*
+   * scan the area and determine which robot is the leader: return true if leader, else return false
+   * a robot is elected leader if the sum of the length of edges incident to it is larger than the sum of one of the edges incident to it and the opposite edge and the sum of the other edge
+   * incident to it and the opposite edge
+   */
   int count = 0;
   float first_detection;
   float second_detection;
@@ -163,7 +150,8 @@ int scan(int distance, float *dist, float *out_angle)
   Serial.print("Far edge: ");
   Serial.println(dist[2]);
 
-  if((dist[0] + dist[1]) >  (dist[0] + dist[2]) && (dist[0] + dist[1]) >  (dist[1] +dist[2])){   
+  if((dist[0] + dist[1]) >  (dist[0] + dist[2]) && (dist[0] + dist[1]) >  (dist[1] +dist[2])){ 
+    //if leader: yellow leds  
     rgbled_0.setColor(0,238,255,0);
     rgbled_0.show();
     return true;
@@ -176,7 +164,8 @@ int scan(int distance, float *dist, float *out_angle)
   }    
 }
 
-void turnAngle(float angle){
+void turnAngleRight(float angle){
+  //turn right of set angle
   float heading = 0;
   gyro.begin();
   while (abs(heading) < angle){
@@ -188,7 +177,23 @@ void turnAngle(float angle){
   Serial.println("Done turning");
 }
 
+void turnAngleLeft(float angle){
+  //turn left of set angle
+  float heading = 0;
+  gyro.begin();
+  while (abs(heading) < angle){
+    turnLeft(SPEED);
+    gyro.update();
+    heading = gyro.getAngleZ();
+  }
+  stop();
+  Serial.println("Done turning");
+}
+
 void move_leader(float dist[]){
+  /*
+   * leader behavior
+   */
   float k;
   float h;
   float cosine;
@@ -198,6 +203,7 @@ void move_leader(float dist[]){
   float b_sq = pow(dist[2],2);
   float c_sq = pow(dist[1],2);
   unsigned long leader_wait;
+  unsigned long wait_other;
   float leader_move_distance;
   unsigned long leader_move_time;
 
@@ -215,12 +221,12 @@ void move_leader(float dist[]){
   Serial.print("\nCosine:");
   Serial.print(cosine);
   angle_deg = (acos(cosine)) * (180.0/3.141592653589793238463);
-  turnAngle(angle_deg- ADJUST_ANGLE/3);
+  turnAngleRight(angle_deg- ADJUST_ANGLE/3);
 
-  //Move the leader
+  //Move leader
   float moving_time = time1M * ((h+10)/100);
   float start_forward = millis();
-  float now = start_forward; //set now smaller than start_turn + moving_time to permit the loop to start
+  float now = start_forward; //set now smaller than start_turn + moving_time to allow the loop to start
   while(start_forward + moving_time > now){
       forward(SPEED);
       now = millis();
@@ -237,17 +243,17 @@ void move_leader(float dist[]){
   }
 
   //end first gathering
-  delay(2000);
+  delay(DELAY);
   
   leader_move_distance = sqrt(pow(equi_edge*2,2) - pow(equi_edge,2));
-  leader_move_time = time1M * (leader_move_distance / 100);  //time to wait  
+  leader_move_time = time1M * (leader_move_distance / 100);  //wait time  
 
   start = millis();
   while(millis()- start < leader_move_time){
     backward(SPEED);
   }
   stop();
-  delay(2000);
+  delay(DELAY);
 
   //first triangle
   start = millis();
@@ -255,9 +261,25 @@ void move_leader(float dist[]){
     forward(SPEED);
   }
   stop();
-  delay(2000);
+  if(dist[0] > dist[1]){
+    turnAngleRight(90);
+  }
+  else{
+    turnAngleLeft(90);
+  }
+  wait_other = time_360/2;
+  delay(wait_other);
+  delay(DELAY);
 
   //first line
+
+  if(dist[0] > dist[1]){
+    turnAngleLeft(90);
+  }
+  else{
+    turnAngleRight(90);
+  }
+  delay(wait_other);
   leader_wait = time1M * ((equi_edge/2)/100);
   delay(leader_wait);
 
@@ -268,7 +290,7 @@ void move_leader(float dist[]){
     backward(SPEED);
   }
   stop();
-  delay(2000);
+  delay(DELAY);
 
   //second triangle
 
@@ -277,38 +299,72 @@ void move_leader(float dist[]){
     forward(SPEED);
   }
   stop();
+  if(dist[0] > dist[1]){
+    turnAngleRight(90);
+  }
+  else{
+    turnAngleLeft(90);
+  }
+  delay(wait_other);
   //second line
  
 }  
 
 
 void not_leader(float dist[], float* out_angle){
+  /*
+   * not leader behavior
+   */
   float s_edge;
   float l_edge;
   float k;
   float h;
+  bool flag; //if flag == true the robot has to make a 180 turn when they're forming a line
   unsigned long wait_time;
   unsigned long move_time;
   unsigned long leader_move_time;
+  unsigned long wait_other;
   float leader_move_distance;
   unsigned long start;
 
   if(dist[1] > dist[0]){
     s_edge = dist[0];
     l_edge = dist[1];
-    turnAngle(*out_angle - ADJUST_ANGLE);    
+    
+    turnAngleRight(*out_angle - ADJUST_ANGLE);
+    if(l_edge > dist[2]){
+      /*
+       *rule to set which robot should rotate in line formation
+       *if true the robot is going to rotate, else it will just wait
+       */
+      flag = true;
+    }
+    else{
+      flag = false;   
+    }
   }
   else{
     s_edge = dist[1];
     l_edge = dist[0];
-    turnAngle(10);
+    turnAngleRight(10);
+   
+    if(l_edge > dist[2]){
+      flag = true;
+    }
+    else{
+      flag = false;   
+    }
   }
 
-  delay(5000);
+  delay(3000);
+  /*
+   * k is a subsegment of the segment between the 2 non leader robots
+   * it's the length between the robot and the point in which the height (perpendicular) generated from the leader incides on the segment between the 2 non leaders
+   */
   k = abs((pow(l_edge,2) + pow(s_edge,2) - pow(dist[2],2)) / (2 * s_edge));
   Serial.println("\n K: ");
   Serial.println(k);
-
+  //h = projection of the leader onto the segment between the 2 non leaders
   h = sqrt(pow(l_edge,2) - pow(k,2));
 
 
@@ -334,8 +390,10 @@ void not_leader(float dist[], float* out_angle){
   }
   stop();
 
-  delay(2000);
-  leader_move_distance = sqrt(pow(equi_edge*2,2) - pow(equi_edge,2));
+  //first gathering
+
+  delay(DELAY);
+  leader_move_distance = sqrt(pow(equi_edge,2) - pow(equi_edge/2,2));
   leader_move_time = time1M * (leader_move_distance / 100);  //time to wait
 
   move_time = time1M * ((equi_edge/2)/100);
@@ -349,13 +407,31 @@ void not_leader(float dist[], float* out_angle){
     delay(leader_move_time - move_time);  
   }
 
-  delay(2000);
+  delay(DELAY);
+
+  //first triangle
 
   delay(leader_move_time);
 
-  delay(2000);
+  if(flag == true){
+    turnAngleRight(175);
+    stop();
+  }
+  else{
+    wait_other = time_360/2;
+    delay(wait_other);
+  }
 
+  delay(DELAY);
   //first line
+
+  if(flag == true){
+    turnAngleLeft(175);
+    stop();
+  }
+  else{
+    delay(wait_other);
+  }
   
   start = millis();
   while(millis()- start < move_time){
@@ -363,7 +439,9 @@ void not_leader(float dist[], float* out_angle){
   }
   stop();
 
-  delay(2000);
+  delay(DELAY);
+
+  //second gathering
 
  start = millis();
  while(millis()- start < move_time){
@@ -375,9 +453,21 @@ void not_leader(float dist[], float* out_angle){
     delay(leader_move_time - move_time);  
   }
 
-  delay(2000);
+  delay(DELAY);
+
+  //second triangle
 
   delay(leader_move_time);
+
+  if(flag == true){
+    turnAngleRight(175);
+    stop();
+  }
+  else{
+    delay(wait_other);
+  }
+
+  //second line
  
 }
 
