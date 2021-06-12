@@ -78,7 +78,7 @@ def scanning(speed,tdist,time_360):
 
     #shutdowm ultrasonic
     sensor_ultrasonic.mode='US-SI-CM'
-    sensor_ultrasonic.value()/10 # convert mm to cm 
+    sensor_ultrasonic.value() 
 
     
     stop_motors()
@@ -194,7 +194,7 @@ def move_leader(dist,time_360,speed,start_degree):
   
 
     #end first gathering
-    sleep(4)
+    sleep(7)
   
     leader_move_distance = math.sqrt(math.pow(equi_edge *2,2) -math.pow(equi_edge,2))
     leader_move_time = time1m * (leader_move_distance / 100);  #time to wait  
@@ -204,7 +204,7 @@ def move_leader(dist,time_360,speed,start_degree):
         start_motors(-360) 
     
     stop_motors()
-    sleep(2)
+    sleep(5)
 
     #first triangle
     start = time()
@@ -212,7 +212,38 @@ def move_leader(dist,time_360,speed,start_degree):
         start_motors(360)
   
     stop_motors()
-    sleep(2)
+
+    line_deg = gyro_sensor.value() 
+    print("Deg line is " + str(gyro_sensor.value()) ,file=sys.stderr)
+    if(dist[0] <  dist[1]):
+
+        while(gyro_sensor.value() > line_deg - 90):
+            print("Deg line is " + str(gyro_sensor.value()) ,file=sys.stderr)
+            rotate(speed)
+        
+        stop_motors()
+        sleep(5)
+
+        while(gyro_sensor.value() < line_deg):
+            rotate(-speed)
+    else:        
+        while(gyro_sensor.value() < line_deg + 90):
+            print("Deg line is " + str(gyro_sensor.value()) ,file=sys.stderr)
+            rotate(-speed)
+        
+        stop_motors()    
+        sleep(5)
+        
+        while(gyro_sensor.value() > line_deg):
+            rotate(speed)
+
+  
+    
+    stop_motors()
+
+    sleep(5)
+
+
 
     #first line
     leader_wait = time1m * ((equi_edge/2)/100)
@@ -225,7 +256,7 @@ def move_leader(dist,time_360,speed,start_degree):
         start_motors(-360)
   
     stop_motors()
-    sleep(4)
+    sleep(7)
 
     #second triangle
 
@@ -236,6 +267,25 @@ def move_leader(dist,time_360,speed,start_degree):
     stop_motors()
     
     #second line
+    line_deg = gyro_sensor.value() 
+    print("Deg line is " + str(gyro_sensor.value()) ,file=sys.stderr)
+    if(dist[0] > dist[1]):
+
+        while(gyro_sensor.value() > line_deg - 90):
+            print("Deg line is " + str(gyro_sensor.value()) ,file=sys.stderr)
+            rotate(speed)
+        
+        stop_motors()
+        sleep(5)
+
+    else:        
+        while(gyro_sensor.value() < line_deg + 90):
+            print("Deg line is " + str(gyro_sensor.value()) ,file=sys.stderr)
+            rotate(-speed)
+        
+        stop_motors()    
+        sleep(5)
+        
 
 def press_button_start():
     while(not sensor_touch.value()):
